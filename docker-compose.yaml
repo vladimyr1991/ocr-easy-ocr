@@ -1,0 +1,10 @@
+version: "3.7"
+
+services:
+
+  easy-ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./src:/workspace
