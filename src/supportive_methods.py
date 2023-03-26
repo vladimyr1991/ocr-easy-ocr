@@ -1,11 +1,10 @@
 import os
 import pdf2image
 from pdf2image import convert_from_path
-# import pytesseract
 import cv2
 from argparse import ArgumentParser
 import numpy as np
-
+import easyocr
 import json
 
 
@@ -14,6 +13,8 @@ parser.add_argument("-f", "--file", dest="filename",
                     help="route to pdf FILE")
 
 args = parser.parse_args()
+
+reader = easyocr.Reader(['ru','en'], gpu=False, quantize=False)
 
 
 def rotate(img, angle, background=(255, 255, 255)):
@@ -34,49 +35,37 @@ def rotate(img, angle, background=(255, 255, 255)):
 def ocr_core(image, page_num):
 
     # extracting metadata with recognized text from image
-    boxes = pytesseract.image_to_data(image, lang='eng+rus')
-    texts = boxes.splitlines()
-
+    recognition = reader.readtext(image)
     words_on_page = []
 
-    for i, t in enumerate(texts):
-        if i != 0:
-            meta = t.split()
-            if len(meta) == 12:
-                word_meta = {
-                    "value": meta[11],
-                    "page": page_num,
-                    "top": meta[7],
-                    "left": meta[6],
-                    "other": t
-                    }
-                words_on_page.append(word_meta)
+    for result in recognition:
+
+        # extracting metadata
+        top_left = tuple(result[0][0])
+        bottom_right = tuple(result[0][2])
+
+        text = result[1]
+        top_left_x = result[0][0][0]
+        top_left_y = result[0][0][1]
+        bottom_right_x = result[0][2][0]
+        bottom_right_y = result[0][2][1]
+
+        width = bottom_right_x - top_left_x
+        height = bottom_right_y - top_left_y
+
+        word_meta = {
+            "value": text,
+            "page": str(page_num),
+            "top": str(top_left_y),
+            "left": str(top_left_x),
+            "length": str(width),
+            "height": str(height),
+            "confidence": str(0)
+            }
+        words_on_page.append(word_meta)
 
     return words_on_page
 
-# # for pytesseract
-# def ocr_core(image, page_num):
-#
-#     # extracting metadata with recognized text from image
-#     boxes = pytesseract.image_to_data(image, lang='eng+rus')
-#     texts = boxes.splitlines()
-#
-#     words_on_page = []
-#
-#     for i, t in enumerate(texts):
-#         if i != 0:
-#             meta = t.split()
-#             if len(meta) == 12:
-#                 word_meta = {
-#                     "value": meta[11],
-#                     "page": page_num,
-#                     "top": meta[7],
-#                     "left": meta[6],
-#                     "other": t
-#                     }
-#                 words_on_page.append(word_meta)
-
-    return words_on_page
 
 def extract_text(guid):
 
@@ -100,17 +89,19 @@ def extract_text_from_bytes(pdf_bytes):
 
     # converting pdf to images
     images = pdf2image.convert_from_bytes(pdf_bytes)
-
     result = []
-
     for page_num, image in enumerate(images):
         # replacing noise from image
-        image = preprocessing_image(image)
+        # image = preprocessing_image(image)
+
+        # transforming image to np array
+        image = np.array(image)
+
         # extracting text from image
         output = ocr_core(image=image, page_num=page_num + 1)
+
         # accumulating recognition
         result = result + output
-
     return result
 
 
